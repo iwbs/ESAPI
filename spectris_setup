@@ -1,0 +1,74 @@
+1) install java
+sudo apt-get install openjdk-7-jdk
+
+2) setup elasticsearch
+a) wget https://download.elasticsearch.org/elasticsearch/release/org/elasticsearch/distribution/tar/elasticsearch/2.2.0/elasticsearch-2.2.0.tar.gz
+b) tar zxfv elasticsearch-2.2.0.tar.gz
+c) sudo mv elasticsearch-2.2.0 /opt
+d) cd /opt/elasticsearch-2.2.0/config
+e) vi elasticsearch.yml
+f) add following lines:
+    script.inline: true
+    script.indexed: true
+g) cd /opt/elasticsearch-2.2.0/bin
+h) export ES_HEAP_SIZE=8g
+i) nohup ./elasticsearch &
+
+j) create schema
+### del index
+curl -XDELETE 'localhost:9200/spectris'
+
+### create index
+curl -XPUT 'http://localhost:9200/spectris/'
+
+### set mapping
+curl -XPUT 'http://localhost:9200/spectris/bksv_china/_mapping' -d '{"bksv_china":{"properties":{"attachments":{"properties":{"content":{"type":"string"},"name":{"type":"string"},"path":{"type":"string"},"size":{"type":"long"},"type":{"type":"string"}}},"body":{"type":"string"},"bodyHTML":{"type":"string"},"creationTime":{"type":"date","format":"strict_date_optional_time||epoch_millis"},"deliveryTime":{"type":"date","format":"strict_date_optional_time||epoch_millis"},"docCreationTime":{"type":"date","format":"strict_date_optional_time||epoch_millis"},"recipients":{"properties":{"domain":{"type":"string","index":"not_analyzed"},"email":{"type":"string","index":"not_analyzed"},"name":{"type":"string"},"type":{"type":"string"}}},"sender":{"properties":{"domain":{"type":"string","index":"not_analyzed"},"email":{"type":"string","index":"not_analyzed"},"name":{"type":"string"}}},"sources":{"properties":{"company":{"type":"string"},"department":{"type":"string","index":"not_analyzed"},"fileName":{"type":"string"},"folderPath":{"type":"string"}}},"subject":{"type":"string"},"submitTime":{"type":"date","format":"strict_date_optional_time||epoch_millis"},"tags":{"type":"string","index":"not_analyzed"}}}}'
+
+### set mapping
+curl -XPUT 'http://localhost:9200/spectris/pms_china/_mapping' -d '{"pms_china":{"properties":{"attachments":{"properties":{"content":{"type":"string"},"name":{"type":"string"},"path":{"type":"string"},"size":{"type":"long"},"type":{"type":"string"}}},"body":{"type":"string"},"bodyHTML":{"type":"string"},"creationTime":{"type":"date","format":"strict_date_optional_time||epoch_millis"},"deliveryTime":{"type":"date","format":"strict_date_optional_time||epoch_millis"},"docCreationTime":{"type":"date","format":"strict_date_optional_time||epoch_millis"},"recipients":{"properties":{"domain":{"type":"string","index":"not_analyzed"},"email":{"type":"string","index":"not_analyzed"},"name":{"type":"string"},"type":{"type":"string"}}},"sender":{"properties":{"domain":{"type":"string","index":"not_analyzed"},"email":{"type":"string","index":"not_analyzed"},"name":{"type":"string"}}},"sources":{"properties":{"company":{"type":"string"},"department":{"type":"string","index":"not_analyzed"},"fileName":{"type":"string"},"folderPath":{"type":"string"}}},"subject":{"type":"string"},"submitTime":{"type":"date","format":"strict_date_optional_time||epoch_millis"},"tags":{"type":"string","index":"not_analyzed"}}}}'
+
+
+### cat indice
+curl 'localhost:9200/_cat/indices'
+
+### reindex
+curl "http://localhost:3000/esapi/reindex?from=spectris_cn&to=spectris"
+
+3) install nodejs
+a) curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.31.0/install.sh | bash
+b) restart terminal
+c) nvm install 5.9.1
+
+4) setup esapi
+scp esapi.tgz search@210.13.96.59:/home/search
+a) tar zxfv esapi.tgz
+b) sudo mv esapi /opt
+c) cd /opt/esapi
+d) nohup node index.js &
+
+5) setup nginx
+a) sudo apt-get install nginx
+b) cd /etc/nginx
+c) add proxy_pass
+        location /esapi {
+                proxy_pass http://127.0.0.1:3000/esapi;
+        }
+d) change root
+    root         /opt/email;
+e) sudo service nginx restart
+
+6) setup PSTParser
+a) scp target/PSTParser-1.0.jar search@210.13.96.59:/home/search
+b) cd /opt
+c) sudo mkdir PSTParser
+d) sudo mv /home/search/PSTParser-1.0.jar /opt/PSTParser
+
+
+#7) increase ulimit?
+#vi /etc/security/limits.conf
+#add line:
+#* - nofile 16384
+
+### How to run
+nohup sudo java -jar PSTParser-1.0.jar spectris pms_china spectris.com.cn "/opt/email/import/PMS China/" /opt/email/attachments/ Spectris "PMS China" &
+
