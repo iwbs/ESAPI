@@ -2,9 +2,11 @@
 var fs = require('fs');
 var elasticsearch = require('elasticsearch');
 var client = new elasticsearch.Client({ host: 'localhost:9200' });
+var spawn = require('child_process').spawn;
 
 var _index = 'spectris';
 var _type = 'email';
+var attachmentSrcFolder = '/opt/email/attachments/';
 var outputFolder = '/u01/report/' + _index + '/' + _type + '/';
 
 // create folders
@@ -58,7 +60,7 @@ client.search({
                     sources.push(mails[j]._source.sources[k].fileName);
                 }
                 fs.appendFile(outputFolder + tags[i].key + '/metadata.csv',
-                    mails[j]._id + ',' + mails[j]._source.sender.email + ',' + mails[j]._source.creationTime + ',' + sources.join('|') + '\n'
+                    mails[j]._id + ',' + mails[j]._source.sender.email + ',' + mails[j]._source.subject + ',' + mails[j]._source.creationTime + ',' + sources.join('|') + '\n'
                     , (err) => {
                         if (err) throw err;
                     });
@@ -66,24 +68,32 @@ client.search({
                 client.get({
                     index: _index,
                     type: _type,
-                    id: mails[j]._id
+                    id: mails[j]._id,
+                    requestTimeout: Infinity
                 }, function (error, response) {
                     let m = response._source;
                     let tos = [], ccs = [], attachments = [];
                     for (let l = 0; l < m.recipients.length; l++) {
                         if (m.recipients[l].type === 'to')
-                            tos.push(m.recipients[l].name + '<' + m.recipients[l].email + '>');
+                            tos.push(m.recipients[l].name + ' ' + m.recipients[l].email);
                         else if (m.recipients[l].type === 'cc')
-                            ccs.push(m.recipients[l].name + '<' + m.recipients[l].email + '>');
+                            ccs.push(m.recipients[l].name + ' ' + m.recipients[l].email);
                     }
                     for (let l = 0; l < m.attachments.length; l++) {
                         attachments.push(m.attachments[l].name);
                     }
-                    fs.writeFile(outputFolder + tags[i].key + '/' + mails[j]._id + '.txt',
+                    let subject = mails[j]._source.subject.replace(/[<>:"\/\\\|\?\*]/g, "");
+                    if (subject.length > 100)
+                        subject = subject.substring(0, 100) + '...';
+                    let fileName = mails[j]._source.sender.name.replace(/[\/]/g, " ") + ' ' + mails[j]._source.sender.email + ' - [' + subject + '] - ' + mails[j]._source.creationTime;
+                    //fs.mkdirSync(outputFolder + tags[i].key + '/' + fileName);
+                    try { fs.statSync(outputFolder + tags[i].key + '/' + fileName); } catch (e) { fs.mkdirSync(outputFolder + tags[i].key + '/' + fileName); }
+                    spawn('cp', ['-rf', attachmentSrcFolder + _index + '/' + mails[j]._id + '/.', outputFolder + tags[i].key + '/' + fileName]);
+                    fs.writeFile(outputFolder + tags[i].key + '/' + fileName + '/' + fileName + '.txt',
                         '[Source]: ' + sources + '\n' +
                         '[Subject]: ' + m.subject + '\n' +
                         '[Date]: ' + m.creationTime + '\n' +
-                        '[From]: ' + m.sender.name + '<' + m.sender.email + '>\n' +
+                        '[From]: ' + m.sender.name + ' ' + m.sender.email + '\n' +
                         '[To]: ' + tos + '\n' +
                         '[CC]: ' + ccs + '\n' +
                         '[Attachment]: ' + attachments + '\n' +
